@@ -1,210 +1,265 @@
-# keyboard_ui.py
+# keyboard_ui.py — Minimal / Clean / Flat (Blue-Cyan palette)
+#
+# Bottom row layout:
+#   [CTRL][WIN][ALT][        SPACE        ][ALT][CTRL]  [ ↑ ]
+#                                                      [←][↓][→]
+#
+# Numpad (right block):
+#   [NUMLK][/][*][-]
+#   [7][8][9] [+] (tall)
+#   [4][5][6]
+#   [1][2][3] [ENT] (tall)
+#   [  0  ][.]
 
 import cv2
+import numpy as np
 import time
+
 from config import (
     KEYBOARD_LAYOUT,
     NUMPAD_LAYOUT,
     SPECIAL_LAYOUT,
-    ARROW_LAYOUT,
-    KEY_UNIT,
-    KEY_HEIGHT,
-    KEY_GAP,
     FRAME_WIDTH,
-    DWELL_TIME
+    FRAME_HEIGHT,
+    DWELL_TIME,
 )
 
-# Dark Mode UI Colors (BGR Format)
-BG_COLOR = (55, 55, 55)            # Base key color (dark grey)
-SPECIAL_BG = (40, 40, 40)          # Special key color (darker grey)
-SHADOW_COLOR = (15, 15, 15)        # Drop shadow color
-TEXT_COLOR = (245, 245, 245)       # Text color (off-white)
-HOVER_COLOR = (120, 120, 120)      # Lighter background on hover
-PRESS_COLOR = (80, 210, 80)        # Green highlight on press
-PROGRESS_COLOR = (250, 180, 80)    # Light blue fill for dwell progress
-BORDER_COLOR = (80, 80, 80)        # Key outline color
+KU  = 46
+KH  = 48
+KH2 = KH * 2 + 5
+GAP = 5
 
-SPECIAL_KEYS = ["ENTER", "SPACE", "TAB", "CAPS", "SHIFT", "SHIFT ", "CTRL", "CTRL ", "WIN", "WIN ", "ALT", "ALT ", "?123", "ABC", "BACK", "BACKSPACE"]
+BG_PANEL    = ( 28,  22,  18)
+KEY_NORMAL  = ( 42,  38,  34)
+KEY_SPECIAL = ( 55,  48,  42)
+KEY_NUMOP   = ( 30,  42,  48)
+KEY_NUMLK   = ( 30,  42,  22)
+KEY_HOVER   = (120, 100,  40)
+KEY_PRESSED = (210, 195,  65)
+TEXT_ON     = (235, 225, 215)
+TEXT_NUMOP  = (205, 185,  50)
+TEXT_NUMLK  = (  0, 165, 232)
+TEXT_DIM    = (110, 100,  90)
+ACCENT      = (205, 185,  50)
+DISPLAY_BG  = ( 20,  16,  13)
+STATE_COL   = (175, 155,  38)
+
+SPECIAL_KEYS = {
+    "ENTER","SPACE","TAB","CAPS",
+    "SHIFT","SHIFT ","CTRL","CTRL ",
+    "WIN","ALT","ALT ","BACK","BACKSPACE",
+    "?123","ABC",
+}
+
+ARROW_MAP = {"↑": "UP", "↓": "DOWN", "←": "LEFT", "→": "RIGHT"}
 
 
-def draw_rounded_rect(img, pt1, pt2, color, thickness=-1, r=8):
-    """Draws a rounded rectangle using cv2 primitives."""
-    x1, y1 = pt1
-    x2, y2 = pt2
-    
-    # Ensure radius doesn't exceed dimensions
-    r = int(min(r, abs(x2 - x1) / 2, abs(y2 - y1) / 2))
-    
-    if thickness < 0:
-        # Fill inner rectangles and 4 corner circles
-        cv2.circle(img, (x1 + r, y1 + r), r, color, -1)
-        cv2.circle(img, (x2 - r, y1 + r), r, color, -1)
-        cv2.circle(img, (x1 + r, y2 - r), r, color, -1)
-        cv2.circle(img, (x2 - r, y2 - r), r, color, -1)
-        
-        cv2.rectangle(img, (x1 + r, y1), (x2 - r, y2), color, -1)
-        cv2.rectangle(img, (x1, y1 + r), (x2, y2 - r), color, -1)
+def _fill(img, x1, y1, x2, y2, col):
+    cv2.rectangle(img, (x1, y1), (x2, y2), col, -1)
+
+def _stroke(img, x1, y1, x2, y2, col, t=1):
+    cv2.rectangle(img, (x1, y1), (x2, y2), col, t)
+
+def _text_centred(img, txt, x1, y1, x2, y2, col, scale=0.60, thick=1):
+    font = cv2.FONT_HERSHEY_DUPLEX
+    if len(txt) > 4:
+        scale = 0.42
+    (tw, th), _ = cv2.getTextSize(txt, font, scale, thick)
+    tx = x1 + (x2 - x1 - tw) // 2
+    ty = y1 + (y2 - y1 + th) // 2
+    cv2.putText(img, txt, (tx, ty), font, scale, col, thick, cv2.LINE_AA)
+
+def _arrow(img, x1, y1, x2, y2, direction, col):
+    mx = (x1 + x2) // 2
+    my = (y1 + y2) // 2
+    s  = min(x2 - x1, y2 - y1) // 3
+    if   direction == "UP":    pts = [[mx, my-s],[mx-s, my+s],[mx+s, my+s]]
+    elif direction == "DOWN":  pts = [[mx, my+s],[mx-s, my-s],[mx+s, my-s]]
+    elif direction == "LEFT":  pts = [[mx-s, my],[mx+s, my-s],[mx+s, my+s]]
+    elif direction == "RIGHT": pts = [[mx+s, my],[mx-s, my-s],[mx-s, my+s]]
+    else: return
+    cv2.fillPoly(img, [np.array(pts, np.int32)], col)
+
+
+def _draw_key(frame, x1, y1, x2, y2, key,
+              is_hov, progress, is_pressed,
+              override_bg=None, override_text=None):
+    arrow_dir = ARROW_MAP.get(key)
+    is_spec   = (key in SPECIAL_KEYS or arrow_dir is not None)
+
+    if override_bg:
+        bg = override_bg
+    elif is_pressed:
+        bg = KEY_PRESSED
+    elif is_hov:
+        bg = KEY_HOVER
+    elif is_spec:
+        bg = KEY_SPECIAL
     else:
-        # Draw 4 corner curves and lines
-        cv2.circle(img, (x1 + r, y1 + r), r, color, thickness)
-        cv2.circle(img, (x2 - r, y1 + r), r, color, thickness)
-        cv2.circle(img, (x1 + r, y2 - r), r, color, thickness)
-        cv2.circle(img, (x2 - r, y2 - r), r, color, thickness)
-        
-        cv2.line(img, (x1 + r, y1), (x2 - r, y1), color, thickness)
-        cv2.line(img, (x1 + r, y2), (x2 - r, y2), color, thickness)
-        cv2.line(img, (x1, y1 + r), (x1, y2 - r), color, thickness)
-        cv2.line(img, (x2, y1 + r), (x2, y2 - r), color, thickness)
+        bg = KEY_NORMAL
+
+    _fill(frame, x1, y1, x2, y2, bg)
+
+    border = ACCENT if is_hov else (52, 46, 40)
+    _stroke(frame, x1, y1, x2, y2, border, 1)
+
+    if is_hov and progress > 0 and not is_pressed:
+        bw = int((x2 - x1 - 4) * progress)
+        if bw > 2:
+            cv2.line(frame, (x1+2, y2-3), (x1+2+bw, y2-3), ACCENT, 3)
+
+    if is_pressed:
+        cv2.line(frame, (x1, y1), (x2, y1), ACCENT, 2)
+
+    lc = (DISPLAY_BG if is_pressed else (override_text or TEXT_ON))
+    if arrow_dir:
+        _arrow(frame, x1, y1, x2, y2, arrow_dir, lc)
+    else:
+        _text_centred(frame, key, x1, y1, x2, y2, lc)
 
 
 def draw_text_display(frame, typed_text, cursor, engine):
-    """Draws the futuristic text display bar at the top."""
-    # Text container background and border
-    draw_rounded_rect(frame, (20, 20), (FRAME_WIDTH - 20, 100), (20, 20, 20), -1, r=12)
-    draw_rounded_rect(frame, (20, 20), (FRAME_WIDTH - 20, 100), (100, 100, 100), 2, r=12)
-    
-    # Blinking cursor effect (every 0.5 sec)
-    blink = "|" if int(time.time() * 2) % 2 == 0 else " "
-    display_text = typed_text[:cursor] + blink + typed_text[cursor:]
-    
-    # Display the text inside the bounds
-    cv2.putText(
-        frame,
-        display_text[-50:],  # Show last 50 chars to avoid overflow
-        (40, 72),
-        cv2.FONT_HERSHEY_DUPLEX,
-        1.1,
-        (255, 255, 255),
-        2
-    )
+    PAD = 20
+    bx1, by1, bx2, by2 = PAD, 12, FRAME_WIDTH - PAD, 88
+    _fill(frame, bx1, by1, bx2, by2, DISPLAY_BG)
+    cv2.line(frame, (bx1, by2), (bx2, by2), ACCENT, 2)
+    cv2.putText(frame, "INPUT", (bx1+8, by1+14),
+                cv2.FONT_HERSHEY_PLAIN, 0.85, ACCENT, 1)
 
-    # Show Active States (CAPS, SHIFT) in top right corner of text area
-    state_str = []
-    if engine.caps: state_str.append("CAPS")
-    if engine.shift: state_str.append("SHIFT")
-    if state_str:
-        cv2.putText(frame, " / ".join(state_str), (FRAME_WIDTH - 180, 50),
-                    cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 200, 255), 2)
+    blink   = "|" if int(time.time() * 2) % 2 == 0 else " "
+    display = (typed_text[:cursor] + blink + typed_text[cursor:])[-52:]
+    cv2.putText(frame, display, (bx1+10, by1+52),
+                cv2.FONT_HERSHEY_DUPLEX, 0.92, TEXT_ON, 1, cv2.LINE_AA)
 
-
-def draw_key(frame, x1, y1, x2, y2, key, is_hovered, progress, is_pressed):
-    """Draws a single key with modern 3D styling, shadows, and hover progress."""
-    # 1. Shadow effect (shifted bottom-right)
-    draw_rounded_rect(frame, (x1 + 4, y1 + 5), (x2 + 4, y2 + 5), SHADOW_COLOR, -1, r=8)
-    
-    # 2. Determine base background colors
-    if is_pressed:
-        bg = PRESS_COLOR
-    elif is_hovered:
-        bg = HOVER_COLOR
-    elif key in SPECIAL_KEYS or key in ["↑", "↓", "←", "→"]:
-        bg = SPECIAL_BG
-    else:
-        bg = BG_COLOR
-        
-    # 3. Dynamic popup/shrink animation
-    # Press visually pushes the key down
-    base_x1, base_y1, base_x2, base_y2 = x1, y1, x2, y2
-    if is_pressed:
-        base_x1 += 2; base_y1 += 2; base_x2 -= 2; base_y2 -= 2
-    elif is_hovered:
-        base_x1 -= 2; base_y1 -= 2; base_x2 += 2; base_y2 += 2
-
-    # Draw Main Key Box
-    draw_rounded_rect(frame, (base_x1, base_y1), (base_x2, base_y2), bg, -1, r=8)
-    # Draw Inner Outline (adds 3D separation effect)
-    draw_rounded_rect(frame, (base_x1, base_y1), (base_x2, base_y2), BORDER_COLOR, 1, r=8)
-    
-    # 4. Progress bar (fill animation while lingering)
-    if is_hovered and progress > 0 and not is_pressed:
-        fill_x = int((base_x2 - base_x1) * progress)
-        # We cap the visual width to avoid jumping outside corners
-        capped_x2 = min(base_x1 + fill_x, base_x2 - 1)
-        # Simple progress bar line at the bottom
-        if capped_x2 > base_x1 + 10:
-             cv2.line(frame, (base_x1 + 8, base_y2 - 6), (capped_x2 - 8, base_y2 - 6), PROGRESS_COLOR, 4)
-
-    # 5. Draw text centered
-    font = cv2.FONT_HERSHEY_DUPLEX
-    scale = 0.55 if len(key) > 4 else 0.75
-    thickness = 1 if len(key) > 4 else 2
-    
-    ts = cv2.getTextSize(key, font, scale, thickness)[0]
-    tx = base_x1 + (base_x2 - base_x1 - ts[0]) // 2
-    ty = base_y1 + (base_y2 - base_y1 + ts[1]) // 2
-    
-    cv2.putText(frame, key, (tx, ty), font, scale, TEXT_COLOR, thickness)
-
-
-def row_width(row):
-    return sum(int(KEY_UNIT * w) for _, w in row) + KEY_GAP * (len(row) - 1)
+    badges = []
+    if engine.caps:  badges.append("CAPS")
+    if engine.shift: badges.append("SHIFT")
+    if badges:
+        cv2.putText(frame, "  ".join(badges), (bx2-140, by1+54),
+                    cv2.FONT_HERSHEY_PLAIN, 1.1, STATE_COL, 1, cv2.LINE_AA)
 
 
 def draw_keyboard(frame, cx, cy, engine):
-    """Calculates layout bounding boxes and routes them to `draw_key`."""
     hovered_key = None
-    special_mode = engine.special_mode
-    now = time.time()
+    now         = time.time()
 
-    # Apply a subtle semi-transparent overlay to the entire screen for better visibility
-    overlay = frame.copy()
-    cv2.rectangle(overlay, (0, 110), (FRAME_WIDTH, 720), (10, 10, 10), -1)
-    cv2.addWeighted(overlay, 0.4, frame, 0.6, 0, frame)
+    _fill(frame, 0, 100, FRAME_WIDTH, FRAME_HEIGHT, BG_PANEL)
+    cv2.line(frame, (0, 100), (FRAME_WIDTH, 100), (52, 46, 40), 1)
 
-    # -------- SELECT MAIN LAYOUT --------
-    main_layout = SPECIAL_LAYOUT if special_mode else KEYBOARD_LAYOUT
+    main_layout = SPECIAL_LAYOUT if engine.special_mode else KEYBOARD_LAYOUT
 
-    # -------- CALCULATE CENTER X --------
-    max_row_w = max(row_width(row) for row in main_layout)
-    start_x = (FRAME_WIDTH - max_row_w) // 2
-    start_y = 150
+    def row_w(row):
+        return sum(int(KU * w) for _, w in row) + GAP * (len(row) - 1)
 
-    # We store the final 'hovered_key' based on coordinates.
-    # We also check the engine's current state to calculate the progress visually.
-    
-    def process_key_grid(layout, start_x, start_y):
+    main_w = max(row_w(r) for r in main_layout)
+    np_w   = 3 * KU + 2 * GAP + GAP + KU
+
+    SECTION_GAP = 20
+    total_w     = main_w + SECTION_GAP + np_w
+    ox          = (FRAME_WIDTH - total_w) // 2
+    start_y     = 108
+
+    main_x = ox
+    np_x   = ox + main_w + SECTION_GAP
+
+    def put_key(key, kx1, ky1, kx2, ky2,
+                override_bg=None, override_text=None):
         nonlocal hovered_key
-        y = start_y
+        is_hov = (cx is not None and cy is not None
+                  and kx1 < cx < kx2 and ky1 < cy < ky2)
+        if is_hov:
+            hovered_key = key
+        is_act  = (engine.last_key == key and not engine.key_locked)
+        is_pres = (engine.last_key == key and engine.key_locked)
+        prog    = 0.0
+        if is_act and engine.hover_start > 0:
+            prog = min(1.0, (now - engine.hover_start) / DWELL_TIME)
+        _draw_key(frame, kx1, ky1, kx2, ky2, key,
+                  is_hov, prog, is_pres, override_bg, override_text)
+
+    def grid(layout, sx, sy):
+        y = sy
         for row in layout:
-            x = start_x
+            x = sx
             for key, w_mul in row:
-                w = int(KEY_UNIT * w_mul)
-                x1, y1 = x, y
-                x2, y2 = x + w, y + KEY_HEIGHT
-                
-                # Check collision safely
-                is_hovered = False
-                if cx is not None and cy is not None:
-                    if x1 < cx < x2 and y1 < cy < y2:
-                        is_hovered = True
-                        hovered_key = key
-
-                # Check Engine state for correct animations
-                is_active = (engine.last_key == key and not engine.key_locked)
-                is_pressed = (engine.last_key == key and engine.key_locked)
-                
-                progress = 0.0
-                if is_active and engine.hover_start > 0:
-                    progress = min(1.0, (now - engine.hover_start) / DWELL_TIME)
-
-                draw_key(frame, x1, y1, x2, y2, key, is_hovered, progress, is_pressed)
-
-                x += w + KEY_GAP
-            y += KEY_HEIGHT + KEY_GAP
+                w = int(KU * w_mul)
+                put_key(key, x, y, x + w, y + KH)
+                x += w + GAP
+            y += KH + GAP
         return y
 
-    # -------- DRAW MAIN KEYBOARD --------
-    process_key_grid(main_layout, start_x, start_y)
+    # ── rows 1–4 (number row to shift row) ──
+    rows_1_to_4 = main_layout[:4]
+    y_after_r4  = grid(rows_1_to_4, main_x, start_y)
 
-    # -------- NUMPAD (RIGHT SIDE) --------
-    np_x = start_x + max_row_w + 50
-    np_y = start_y
-    y_after_numpad = process_key_grid(NUMPAD_LAYOUT, np_x, np_y)
+    # ── bottom row ──────────────────────────────────────────
+    row5_y  = y_after_r4 + GAP
+    ctrl_w  = int(KU * 1.5)
+    win_w   = int(KU * 1.2)
+    alt_w   = int(KU * 1.2)
+    arrow_w = KU
 
-    # -------- ARROW KEYS (BOTTOM CENTER) --------
-    arrow_w = max(row_width(row) for row in ARROW_LAYOUT)
-    arrow_x = (FRAME_WIDTH - arrow_w) // 2
-    arrow_y = y_after_numpad + 20
-    process_key_grid(ARROW_LAYOUT, arrow_x, arrow_y)
+    arrow_cluster_w = 3 * arrow_w + 2 * GAP
+    fixed_left      = ctrl_w + win_w + alt_w + 3 * GAP
+    fixed_right     = alt_w + ctrl_w + 2 * GAP + arrow_cluster_w + GAP
+    space_w         = main_w - fixed_left - fixed_right
+
+    bx = main_x
+    by = row5_y
+
+    put_key("CTRL",  bx, by, bx + ctrl_w,  by + KH); bx += ctrl_w  + GAP
+    put_key("WIN",   bx, by, bx + win_w,   by + KH); bx += win_w   + GAP
+    put_key("ALT",   bx, by, bx + alt_w,   by + KH); bx += alt_w   + GAP
+    put_key("SPACE", bx, by, bx + space_w, by + KH); bx += space_w + GAP
+    put_key("ALT ",  bx, by, bx + alt_w,   by + KH); bx += alt_w   + GAP
+    put_key("CTRL ", bx, by, bx + ctrl_w,  by + KH); bx += ctrl_w  + GAP
+
+    # arrow inverted-T
+    half_h  = (KH - GAP) // 2
+    up_y1   = row5_y
+    up_y2   = row5_y + half_h
+    down_y1 = up_y2 + GAP
+    down_y2 = row5_y + KH
+
+    up_x1 = bx + arrow_w + GAP
+    put_key("↑", up_x1, up_y1, up_x1 + arrow_w, up_y2)
+
+    ax = bx
+    for sym in ["←", "↓", "→"]:
+        put_key(sym, ax, down_y1, ax + arrow_w, down_y2)
+        ax += arrow_w + GAP
+
+    # ── numpad ──────────────────────────────────────────────
+    cv2.putText(frame, "NUM", (np_x + 2, start_y - 6),
+                cv2.FONT_HERSHEY_PLAIN, 0.8, TEXT_DIM, 1, cv2.LINE_AA)
+
+    ny = start_y
+    top_row = [("NUMLK", KEY_NUMLK, TEXT_NUMLK),
+               ("/",     KEY_NUMOP, TEXT_NUMOP),
+               ("*",     KEY_NUMOP, TEXT_NUMOP),
+               ("-",     KEY_NUMOP, TEXT_NUMOP)]
+    for i, (key, bg, tc) in enumerate(top_row):
+        nx1 = np_x + i * (KU + GAP)
+        put_key(key, nx1, ny, nx1 + KU, ny + KH, bg, tc)
+    ny += KH + GAP
+
+    digits = [["7","8","9"], ["4","5","6"], ["1","2","3"]]
+    for row_keys in digits:
+        for ci, key in enumerate(row_keys):
+            nx1 = np_x + ci * (KU + GAP)
+            put_key(key, nx1, ny, nx1 + KU, ny + KH)
+        ny += KH + GAP
+
+    put_key("0", np_x, ny, np_x + 2*KU + GAP, ny + KH)
+    put_key(".", np_x + 2*KU + 2*GAP, ny, np_x + 3*KU + 2*GAP, ny + KH)
+
+    tall_x1 = np_x + 3*KU + 3*GAP
+    tall_y1 = start_y + KH + GAP
+    put_key("+",      tall_x1, tall_y1, tall_x1+KU, tall_y1+KH2, KEY_NUMOP, TEXT_NUMOP)
+    ent_y1  = tall_y1 + KH2 + GAP
+    put_key("NP_ENT", tall_x1, ent_y1,  tall_x1+KU, ent_y1+KH2,  KEY_NUMOP, TEXT_NUMOP)
+    _text_centred(frame, "ENT", tall_x1, ent_y1, tall_x1+KU, ent_y1+KH2,
+                  DISPLAY_BG if (engine.last_key=="NP_ENT" and engine.key_locked)
+                  else TEXT_NUMOP)
 
     return hovered_key
