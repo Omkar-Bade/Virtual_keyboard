@@ -55,6 +55,15 @@ while True:
     # 3. Render clean typing bar at top
     draw_text_display(frame, typed_text, cursor, engine)
 
+    # 3.5 Calculate and display FPS
+    import time
+    if not hasattr(engine, 'prev_fps_time'):
+        engine.prev_fps_time = time.time()
+    curr_time = time.time()
+    fps = 1 / (curr_time - engine.prev_fps_time) if (curr_time - engine.prev_fps_time) > 0 else 0
+    engine.prev_fps_time = curr_time
+    cv2.putText(frame, f"FPS: {int(fps)}", (20, 110), cv2.FONT_HERSHEY_PLAIN, 1.2, (0, 255, 0), 2)
+
     # 4. Render finger cursor ON TOP of everything
     if pos:
         cv2.circle(frame, (cx, cy), 8, (255, 180, 50), -1)   # inner dot
