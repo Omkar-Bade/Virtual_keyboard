@@ -115,7 +115,12 @@ def _draw_key(frame, x1, y1, x2, y2, key,
     if arrow_dir:
         _arrow(frame, x1, y1, x2, y2, arrow_dir, lc)
     else:
-        _text_centred(frame, key, x1, y1, x2, y2, lc)
+        disp_key = key
+        if key.startswith("NP_") and key != "NP_ENT":
+            disp_key = key[3:]
+        elif key == "NP_ENT":
+            disp_key = "ENT"
+        _text_centred(frame, disp_key, x1, y1, x2, y2, lc)
 
 
 def draw_text_display(frame, typed_text, cursor, engine):
@@ -134,6 +139,7 @@ def draw_text_display(frame, typed_text, cursor, engine):
     badges = []
     if engine.caps:  badges.append("CAPS")
     if engine.shift: badges.append("SHIFT")
+    if engine.num_lock: badges.append("NUM")
     if badges:
         cv2.putText(frame, "  ".join(badges), (bx2-140, by1+54),
                     cv2.FONT_HERSHEY_PLAIN, 1.1, STATE_COL, 1, cv2.LINE_AA)
@@ -243,23 +249,20 @@ def draw_keyboard(frame, cx, cy, engine):
         put_key(key, nx1, ny, nx1 + KU, ny + KH, bg, tc)
     ny += KH + GAP
 
-    digits = [["7","8","9"], ["4","5","6"], ["1","2","3"]]
+    digits = [["NP_7","NP_8","NP_9"], ["NP_4","NP_5","NP_6"], ["NP_1","NP_2","NP_3"]]
     for row_keys in digits:
         for ci, key in enumerate(row_keys):
             nx1 = np_x + ci * (KU + GAP)
             put_key(key, nx1, ny, nx1 + KU, ny + KH)
         ny += KH + GAP
 
-    put_key("0", np_x, ny, np_x + 2*KU + GAP, ny + KH)
-    put_key(".", np_x + 2*KU + 2*GAP, ny, np_x + 3*KU + 2*GAP, ny + KH)
+    put_key("NP_0", np_x, ny, np_x + 2*KU + GAP, ny + KH)
+    put_key("NP_.", np_x + 2*KU + 2*GAP, ny, np_x + 3*KU + 2*GAP, ny + KH)
 
     tall_x1 = np_x + 3*KU + 3*GAP
     tall_y1 = start_y + KH + GAP
     put_key("+",      tall_x1, tall_y1, tall_x1+KU, tall_y1+KH2, KEY_NUMOP, TEXT_NUMOP)
     ent_y1  = tall_y1 + KH2 + GAP
     put_key("NP_ENT", tall_x1, ent_y1,  tall_x1+KU, ent_y1+KH2,  KEY_NUMOP, TEXT_NUMOP)
-    _text_centred(frame, "ENT", tall_x1, ent_y1, tall_x1+KU, ent_y1+KH2,
-                  DISPLAY_BG if (engine.last_key=="NP_ENT" and engine.key_locked)
-                  else TEXT_NUMOP)
 
     return hovered_key

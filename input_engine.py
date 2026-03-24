@@ -69,6 +69,9 @@ class InputEngine:
             self.special_mode = True
         elif hovered == "ABC":
             self.special_mode = False
+        elif hovered.startswith("NP_") and hovered != "NP_ENT":
+            if self.num_lock:
+                self._insert(hovered[3:])
         elif hovered == "←":
             if self.cursor > 0:
                 self.cursor -= 1
