@@ -163,7 +163,6 @@ pip install -r requirements.txt
 ```bash
 python main.py
 ```
-
 ---
 
 ## 🎮 How to Use
@@ -177,9 +176,6 @@ python main.py
 | Hover **SHIFT** | Next letter types as uppercase |
 | Hover **NUMLK** | Toggles Num Lock on numpad |
 | Press **ESC** | Exits the application |
-
-> **Tip:** Make sure you are in a well-lit room for best hand detection accuracy.
-
 ---
 
 ## 📸 Key Layout Preview
@@ -192,18 +188,6 @@ python main.py
  [CTRL][WIN][ALT][   SPACE   ][ALT][CTRL] [↑]  [ 0 ][.]
                                         [←][↓][→]
 ```
-
----
-
-## 🛠️ Customisation
-
-- **Change dwell time**: Edit `DWELL_TIME` in `config.py`
-- **Change resolution**: Edit `FRAME_WIDTH` / `FRAME_HEIGHT` in `config.py`
-- **Add/remove keys**: Modify `KEYBOARD_LAYOUT`, `NUMPAD_LAYOUT`, or `SPECIAL_LAYOUT` arrays in `config.py`
-- **Adjust smoothing**: Lower `ALPHA` for more smoothing, higher for more responsiveness
-- **Theme colours**: All colour constants are at the top of `keyboard_ui.py`
-
----
 
 ## 📄 License
 
